@@ -300,8 +300,10 @@ class AutoencoderKL(pl.LightningModule):
                  monitor=None,
                  ):
         super().__init__()
+        # import pdb;pdb.set_trace()
         self.image_key = image_key
         self.encoder = Encoder(**ddconfig)
+        # import pdb;pdb.set_trace()
         self.decoder = Decoder(**ddconfig)
         self.loss = instantiate_from_config(lossconfig)
         assert ddconfig["double_z"]
@@ -483,7 +485,7 @@ class AutoencoderKLResi(pl.LightningModule):
                  test_gt=False,
                  ):
         super().__init__()
-        self.image_key = image_key
+        self.image_key = image_key # 'gt'
         self.encoder = Encoder(**ddconfig)
         self.decoder = Decoder_Mix(**ddconfig)
         self.decoder.fusion_w = fusion_w
@@ -549,6 +551,7 @@ class AutoencoderKLResi(pl.LightningModule):
     #     print(f"Restored from {path}")
 
     def init_from_ckpt(self, path, ignore_keys=list(), only_model=False):
+        # import pdb;pdb.set_trace()
         sd = torch.load(path, map_location="cpu")
         if "state_dict" in list(sd.keys()):
             sd = sd["state_dict"]
@@ -585,6 +588,7 @@ class AutoencoderKLResi(pl.LightningModule):
 
     def decode(self, z, enc_fea):
         z = self.post_quant_conv(z)
+        # import pdb;pdb.set_trace()
         dec = self.decoder(z, enc_fea)
         return dec
 

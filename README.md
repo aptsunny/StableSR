@@ -144,6 +144,77 @@ python scripts/sr_val_ddpm_text_T_vqganfin_oldcanvas_tile.py --config configs/st
 
 - For test on 768 model, you need to set ```--config configs/stableSRNew/v2-finetune_text_T_768v.yaml```, ```--input_size 768``` and ```--ckpt```. You can also adjust ```--tile_overlap```, ```--vqgantile_size``` and ```--vqgantile_stride``` accordingly. We did not finetune CFW.
 
+
+
+```
+conda activate stablesr
+
+rm -r /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/input_output_ && mkdir /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/input_output_ \
+&& python scripts/sr_val_ddpm_text_T_vqganfin_old.py \
+    --config configs/stableSRNew/v2-finetune_text_T_512.yaml \
+    --ckpt /d/workspace/aifusion/experiments/save_checkpoint/stablesr_000117.ckpt \
+    --vqgan_ckpt /d/workspace/aifusion/experiments/save_checkpoint/vqgan_cfw_00011.ckpt \
+    --init-img /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/lq \
+    --outdir /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/input_output_ \
+    --ddpm_steps 200 \
+    --dec_w 0.5 \
+    --colorfix_type adain
+
+采样次数如果减少为5 
+rm -r /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/input_output_ && mkdir /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/input_output_ \
+&& python scripts/sr_val_ddpm_text_T_vqganfin_old.py \
+    --config configs/stableSRNew/v2-finetune_text_T_512.yaml \
+    --ckpt /d/workspace/aifusion/experiments/save_checkpoint/stablesr_000117.ckpt \
+    --vqgan_ckpt /d/workspace/aifusion/experiments/save_checkpoint/vqgan_cfw_00011.ckpt \
+    --init-img /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/lq \
+    --outdir /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/input_output_ \
+    --ddpm_steps 5 \
+    --dec_w 0.5 \
+    --colorfix_type adain
+
+# 0.999
+rm -r /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/input_output_ && mkdir /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/input_output_ \
+&& python scripts/sr_val_ddpm_text_T_vqganfin_old.py \
+    --config configs/stableSRNew/v2-finetune_text_T_512.yaml \
+    --ckpt /d/workspace/aifusion/experiments/save_checkpoint/stablesr_000117.ckpt \
+    --vqgan_ckpt /d/workspace/aifusion/experiments/save_checkpoint/vqgan_cfw_00011.ckpt \
+    --init-img /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/lq \
+    --outdir /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/input_output_ \
+    --ddpm_steps 200 \
+    --dec_w 0.999 \
+    --colorfix_type adain
+
+# 上边应该是统一到512
+
+# 下边应该是倍数 960，1024
+rm -r /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/input_output_ && mkdir /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/input_output_ \
+&& python scripts/sr_val_ddpm_text_T_vqganfin_oldcanvas.py \
+    --config configs/stableSRNew/v2-finetune_text_T_512.yaml \
+    --ckpt /d/workspace/aifusion/experiments/save_checkpoint/stablesr_000117.ckpt \
+    --vqgan_ckpt /d/workspace/aifusion/experiments/save_checkpoint/vqgan_cfw_00011.ckpt \
+    --init-img /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/lq \
+    --outdir /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/input_output_ \
+    --ddpm_steps 200 \
+    --dec_w 0.5 \
+    --colorfix_type adain
+
+# 984 1024
+rm -r /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/input_output_ && mkdir /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/input_output_ \
+&& python scripts/sr_val_ddpm_text_T_vqganfin_oldcanvas_tile.py \
+    --config configs/stableSRNew/v2-finetune_text_T_512.yaml \
+    --ckpt /d/workspace/aifusion/experiments/save_checkpoint/stablesr_000117.ckpt \
+    --vqgan_ckpt /d/workspace/aifusion/experiments/save_checkpoint/vqgan_cfw_00011.ckpt \
+    --init-img /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/lq \
+    --outdir /d/workspace/unused_branch/mmagic_old_aptsunny/data/gopro/test_sample/input_output_ \
+    --ddpm_steps 200 \
+    --dec_w 0.5 \
+    --colorfix_type adain
+    
+```
+
+
+
+
 ### Citation
 If our work is useful for your research, please consider citing:
 

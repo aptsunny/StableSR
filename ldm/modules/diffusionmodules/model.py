@@ -471,6 +471,7 @@ class Encoder(nn.Module):
                  resolution, z_channels, double_z=True, use_linear_attn=False, attn_type="vanilla",
                  **ignore_kwargs):
         super().__init__()
+        # import pdb;pdb.set_trace()
         if use_linear_attn: attn_type = "linear"
         self.ch = ch
         self.temb_ch = 0
@@ -533,6 +534,7 @@ class Encoder(nn.Module):
 
     def forward(self, x, return_fea=False):
         # timestep embedding
+        # import pdb;pdb.set_trace()
         temb = None
 
         # downsampling
@@ -727,6 +729,8 @@ class Decoder_Mix(nn.Module):
 
             if i_level != self.num_resolutions-1:
                 if i_level != 0:
+                    # print(i_level)
+                    # import pdb;pdb.set_trace()
                     fuse_layer = Fuse_sft_block_RRDB(in_ch=block_out, out_ch=block_out, num_block=num_fuse_block)
                     setattr(self, 'fusion_layer_{}'.format(i_level), fuse_layer)
 
@@ -746,7 +750,7 @@ class Decoder_Mix(nn.Module):
                 up.upsample = Upsample(block_in, resamp_with_conv)
                 curr_res = curr_res * 2
             self.up.insert(0, up) # prepend to get consistent order
-
+        # import pdb;pdb.set_trace()
         # end
         self.norm_out = Normalize(block_in)
         self.conv_out = torch.nn.Conv2d(block_in,
@@ -763,31 +767,35 @@ class Decoder_Mix(nn.Module):
         temb = None
 
         # z to block_in
-        h = self.conv_in(z)
+        # h = self.conv_in(z)
+        h_out = self.conv_in(z)
 
         # middle
-        h = self.mid.block_1(h, temb)
-        h = self.mid.attn_1(h)
-        h = self.mid.block_2(h, temb)
+        h_out = self.mid.block_1(h_out, temb)
+        h_out = self.mid.attn_1(h_out)
+        h_out = self.mid.block_2(h_out, temb) # 2,512,64,64
+        # import pdb;pdb.set_trace()
 
-        # upsampling
-        for i_level in reversed(range(self.num_resolutions)):
-            for i_block in range(self.num_res_blocks+1):
-                h = self.up[i_level].block[i_block](h, temb)
+        # upsampling [i_level for i_level in reversed(range(self.num_resolutions))]
+        for i_level in reversed(range(self.num_resolutions)): # 3210
+            for i_block in range(self.num_res_blocks+1): # 012 [i_block for i_block in range(self.num_res_blocks+1)]
+                # import pdb;pdb.set_trace()
+                h_out = self.up[i_level].block[i_block](h_out, temb)
                 if len(self.up[i_level].attn) > 0:
-                    h = self.up[i_level].attn[i_block](h)
+                    h_out = self.up[i_level].attn[i_block](h_out)
 
             if i_level != self.num_resolutions-1 and i_level != 0:
                 cur_fuse_layer = getattr(self, 'fusion_layer_{}'.format(i_level))
-                h = cur_fuse_layer(enc_fea[i_level-1], h, self.fusion_w)
+                h_out = cur_fuse_layer(enc_fea[i_level-1], h_out, self.fusion_w)
 
             if i_level != 0:
-                h = self.up[i_level].upsample(h)
+                h_out = self.up[i_level].upsample(h_out)
+        # import pdb;pdb.set_trace()
         # end
         if self.give_pre_end:
-            return h
+            return h_out
 
-        h = self.norm_out(h)
+        h = self.norm_out(h_out)
         h = nonlinearity(h)
         h = self.conv_out(h)
         if self.tanh_out:

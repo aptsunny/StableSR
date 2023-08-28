@@ -1,3 +1,6 @@
+*.npy
+tmp_compare/*
+
 # ignored folders
 logs/*
 models/*
