@@ -1020,7 +1020,7 @@ class UNetModelDualcondV2(nn.Module):
         super().__init__()
         if use_spatial_transformer:
             assert context_dim is not None, 'Fool!! You forgot to include the dimension of your cross-attention conditioning...'
-
+        # import pdb;pdb.set_trace()
         if context_dim is not None:
             assert use_spatial_transformer, 'Fool!! You forgot to use the spatial transformer for your cross-attention conditioning...'
             from omegaconf.listconfig import ListConfig
@@ -1304,15 +1304,16 @@ class UNetModelDualcondV2(nn.Module):
         self.middle_block.apply(convert_module_to_f32)
         self.output_blocks.apply(convert_module_to_f32)
 
-    def forward(self, x, timesteps=None, context=None, struct_cond=None, y=None,**kwargs):
+    def forward(self, x, timesteps=None, context=None, struct_cond=None, y=None, **kwargs):
         """
-        Apply the model to an input batch.
-        :param x: an [N x C x ...] Tensor of inputs.
-        :param timesteps: a 1-D batch of timesteps.
-        :param context: conditioning plugged in via crossattn
-        :param y: an [N] Tensor of labels, if class-conditional.
+        Apply the model to an input batch. struct_cond [2,256,64,64] [2,256,32,32] [2,256,16,16] [2,256,8,8]
+        :param x: an [N x C x ...] Tensor of inputs. [2,4,64,64]
+        :param timesteps: a 1-D batch of timesteps. [999,999]
+        :param context: conditioning plugged in via crossattn [2,77,1024]
+        :param y: an [N] Tensor of labels, if class-conditional. 
         :return: an [N x C x ...] Tensor of outputs.
         """
+        # import pdb;pdb.set_trace()
         assert (y is not None) == (
             self.num_classes is not None
         ), "must specify y if and only if the model is class-conditional"
@@ -1332,11 +1333,13 @@ class UNetModelDualcondV2(nn.Module):
         for module in self.output_blocks:
             h = th.cat([h, hs.pop()], dim=1)
             h = module(h, emb, context, struct_cond)
-        h = h.type(x.dtype)
+        h_tensor = h.type(x.dtype)
+        # 2,320,64,64
+        # import pdb;pdb.set_trace()
         if self.predict_codebook_ids:
-            return self.id_predictor(h)
+            return self.id_predictor(h_tensor)
         else:
-            return self.out(h)
+            return self.out(h_tensor) # 2，4，64，64
 
 class EncoderUNetModelWT(nn.Module):
     """

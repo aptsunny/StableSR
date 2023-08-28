@@ -200,7 +200,8 @@ class DDPM(pl.LightningModule):
         self.image_size = image_size  # try conv?
         self.channels = channels
         self.use_positional_encodings = use_positional_encodings
-        self.model = DiffusionWrapper(unet_config, conditioning_key)
+        # import pdb;pdb.set_trace()
+        self.model = DiffusionWrapper(unet_config, conditioning_key) # conditioning_key:crossattn
         count_params(self.model, verbose=True)
         self.use_ema = use_ema
         if self.use_ema:
@@ -1583,6 +1584,7 @@ class LatentDiffusionSRTextWT(DDPM):
                  use_usm=False,
                  mix_ratio=0.0,
                  *args, **kwargs):
+        # import pdb;pdb.set_trace()
         # put this in your init
         self.num_timesteps_cond = default(num_timesteps_cond, 1)
         self.scale_by_std = scale_by_std
@@ -1766,17 +1768,19 @@ class LatentDiffusionSRTextWT(DDPM):
         return self.scale_factor * z
 
     def get_learned_conditioning(self, c):
+        c_tensor = c
+        # import pdb;pdb.set_trace()
         if self.cond_stage_forward is None:
             if hasattr(self.cond_stage_model, 'encode') and callable(self.cond_stage_model.encode):
-                c = self.cond_stage_model.encode(c)
-                if isinstance(c, DiagonalGaussianDistribution):
-                    c = c.mode()
+                c_tensor = self.cond_stage_model.encode(c_tensor)
+                if isinstance(c_tensor, DiagonalGaussianDistribution):
+                    c_tensor = c_tensor.mode()
             else:
-                c = self.cond_stage_model(c)
+                c_tensor = self.cond_stage_model(c_tensor)
         else:
             assert hasattr(self.cond_stage_model, self.cond_stage_forward)
-            c = getattr(self.cond_stage_model, self.cond_stage_forward)(c)
-        return c
+            c_tensor = getattr(self.cond_stage_model, self.cond_stage_forward)(c_tensor)
+        return c_tensor
 
     def meshgrid(self, h, w):
         y = torch.arange(0, h).view(h, 1, 1).repeat(1, w, 1)
@@ -2185,7 +2189,6 @@ class LatentDiffusionSRTextWT(DDPM):
             else:
                 return self.first_stage_model.decode(z)
 
-
     # same as above but without decorator
     def differentiable_decode_first_stage(self, z, predict_cids=False, force_not_quantize=False):
         if predict_cids:
@@ -2304,6 +2307,7 @@ class LatentDiffusionSRTextWT(DDPM):
             if self.cond_stage_trainable:
                 c = self.get_learned_conditioning(c)
             else:
+                # import pdb;pdb.set_trace()
                 c = self.cond_stage_model(c)
             if self.shorten_cond_schedule:  # TODO: drop this option
                 print(s)
@@ -2422,7 +2426,15 @@ class LatentDiffusionSRTextWT(DDPM):
 
         else:
             cond['struct_cond'] = struct_cond
+            # ldm.modules.diffusionmodules.openaimodel.UNetModelDualcondV2
+            # x_noisy torch.Size([1, 4, 64, 64])
+            # cond 
+            # cond['c_crossattn'][0].shape [1, 77, 1024]
+            # cond['struct_cond'].keys() '64', '32', '16', '8'
+            #  '64' - torch.Size([1, 256, 64, 64])
+            #  '32' - torch.Size([1, 256, 32, 32])
             x_recon = self.model(x_noisy, t, **cond)
+            # x_recon torch.Size([1, 4, 64, 64])
 
         if isinstance(x_recon, tuple) and not return_ids:
             return x_recon[0]
@@ -2522,7 +2534,7 @@ class LatentDiffusionSRTextWT(DDPM):
             x_recon = self.predict_start_from_z_and_v(x, model_out, t)
         else:
             raise NotImplementedError()
-
+        # import pdb;pdb.set_trace()
         if clip_denoised:
             x_recon.clamp_(-1., 1.)
         if quantize_denoised:
@@ -2815,6 +2827,9 @@ class LatentDiffusionSRTextWT(DDPM):
             assert x0.shape[2:3] == mask.shape[2:3]  # spatial size has to match
 
         batch_list = []
+        # 200 次采样
+        # 7. Denoising Loop
+        # import pdb;pdb.set_trace()
         for i in iterator:
             if time_replace is None or time_replace == 1000:
                 ts = torch.full((b,), i, device=device, dtype=torch.long)
@@ -2832,7 +2847,8 @@ class LatentDiffusionSRTextWT(DDPM):
                 if start_T is not None:
                     if self.ori_timesteps[i] > start_T:
                          continue
-                struct_cond_input = self.structcond_stage_model(struct_cond, t_replace)
+                # structcond_stage_config -> EncoderUNetModelWT
+                struct_cond_input = self.structcond_stage_model(struct_cond, t_replace) # EncoderUNetModelWT
             else:
                 if start_T is not None:
                     if i > start_T:
@@ -3187,14 +3203,15 @@ class DiffusionWrapper(pl.LightningModule):
         assert self.conditioning_key in [None, 'concat', 'crossattn', 'hybrid', 'adm']
 
     def forward(self, x, t, c_concat: list = None, c_crossattn: list = None, struct_cond=None, seg_cond=None):
+        # import pdb;pdb.set_trace()
         if self.conditioning_key is None:
             out = self.diffusion_model(x, t)
         elif self.conditioning_key == 'concat':
             xc = torch.cat([x] + c_concat, dim=1)
             out = self.diffusion_model(xc, t)
         elif self.conditioning_key == 'crossattn':
-            cc = torch.cat(c_crossattn, 1)
-            if seg_cond is None:
+            cc = torch.cat(c_crossattn, 1) # 2,77,1024
+            if seg_cond is None: # 2,4,64,64
                 out = self.diffusion_model(x, t, context=cc, struct_cond=struct_cond)
             else:
                 out = self.diffusion_model(x, t, context=cc, struct_cond=struct_cond, seg_cond=seg_cond)

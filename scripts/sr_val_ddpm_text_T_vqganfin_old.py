@@ -111,7 +111,7 @@ def load_img(path):
 	return 2.*image - 1.
 
 
-def main():
+def get_parser():
 	parser = argparse.ArgumentParser()
 
 	parser.add_argument(
@@ -203,33 +203,71 @@ def main():
 	)
 
 	opt = parser.parse_args()
+	return opt
+	
+
+# import torch
+# import numpy as np
+
+def to_numpy(v):
+    if isinstance(v, torch.Tensor):
+        result = v.cpu().detach().numpy()
+    elif isinstance(v, (tuple, list)):
+        result = []
+        for i in range(len(v)):
+            result.append(to_numpy(v[i]))
+    elif isinstance(v, dict):
+        result = {}
+        for k, vv in v.items():
+            result[k] = to_numpy(vv)
+    else:
+        result = v
+    return result
+
+def to_tensor(v):
+    if isinstance(v, np.ndarray):
+        result = torch.from_numpy(v)
+    elif isinstance(v, (tuple, list)):
+        result = []
+        for i in range(len(v)):
+            result.append(to_tensor(v[i]))
+    elif isinstance(v, dict):
+        result = {}
+        for k, vv in v.items():
+            result[k] = to_tensor(vv)
+    else:
+        result = v
+    return result
+
+def main():
+	opt = get_parser()
+
 	device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-	print('>>>>>>>>>>color correction>>>>>>>>>>>')
+	# print('>>>>>>>>>>color correction>>>>>>>>>>>')
 	if opt.colorfix_type == 'adain':
 		print('Use adain color correction')
 	elif opt.colorfix_type == 'wavelet':
 		print('Use wavelet color correction')
 	else:
 		print('No color correction')
-	print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+	# print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
 
+	print('>>>>>>>>>>>> Load vqgan Model >>>>>>>>>>>>>')
 	vqgan_config = OmegaConf.load("configs/autoencoder/autoencoder_kl_64x64x4_resi.yaml")
 	vq_model = load_model_from_config(vqgan_config, opt.vqgan_ckpt)
 	vq_model = vq_model.to(device)
 	vq_model.decoder.fusion_w = opt.dec_w
+	# import pdb;pdb.set_trace()
 
 	seed_everything(opt.seed)
 
-	transform = torchvision.transforms.Compose([
-		torchvision.transforms.Resize(opt.input_size),
-		torchvision.transforms.CenterCrop(opt.input_size),
-	])
-
+	print('>>>>>>>>>>>> Load stablesr 117 Model >>>>>>>>>>>>>')
 	config = OmegaConf.load(f"{opt.config}")
 	model = load_model_from_config(config, f"{opt.ckpt}")
 	model = model.to(device)
 
+	# 对照 stable diffusion 以及 controlnet 的 infer 过程，看看以下流程是可以放在哪个模块内的
 	os.makedirs(opt.outdir, exist_ok=True)
 	outpath = opt.outdir
 
@@ -237,6 +275,11 @@ def main():
 
 	img_list_ori = os.listdir(opt.init_img)
 	img_list = copy.deepcopy(img_list_ori)
+
+	transform = torchvision.transforms.Compose([
+		torchvision.transforms.Resize(opt.input_size),
+		torchvision.transforms.CenterCrop(opt.input_size),
+	])
 	init_image_list = []
 	for item in img_list_ori:
 		if os.path.exists(os.path.join(outpath, item)):
@@ -247,9 +290,11 @@ def main():
 		cur_image = cur_image.clamp(-1, 1)
 		init_image_list.append(cur_image)
 	init_image_list = torch.cat(init_image_list, dim=0)
-	niters = math.ceil(init_image_list.size(0) / batch_size)
-	init_image_list = init_image_list.chunk(niters)
+	niters = math.ceil(init_image_list.size(0) / batch_size) # 2
+	init_image_list = init_image_list.chunk(niters) # [2,3,512,512]
+	# import pdb;pdb.set_trace()
 
+	# import pdb;pdb.set_trace()
 	model.register_schedule(given_betas=None, beta_schedule="linear", timesteps=1000,
 						  linear_start=0.00085, linear_end=0.0120, cosine_s=8e-3)
 	model.num_timesteps = 1000
@@ -267,35 +312,84 @@ def main():
 			last_alpha_cumprod = alpha_cumprod
 			timestep_map.append(i)
 	new_betas = [beta.data.cpu().numpy() for beta in new_betas]
+	# 获取 new_betas 重新注册schedule
 	model.register_schedule(given_betas=np.array(new_betas), timesteps=len(new_betas))
 	model.num_timesteps = 1000
+	# 4. Prepare timesteps
 	model.ori_timesteps = list(use_timesteps)
 	model.ori_timesteps.sort()
 	model = model.to(device)
 
 	precision_scope = autocast if opt.precision == "autocast" else nullcontext
 	niqe_list = []
+	# import pdb;pdb.set_trace()
+
 	with torch.no_grad():
 		with precision_scope("cuda"):
 			with model.ema_scope():
 				tic = time.time()
 				all_samples = list()
-				for n in trange(niters, desc="Sampling"):
+				for n in trange(niters, desc="Sampling"): # 2
 					init_image = init_image_list[n]
-					init_latent_generator, enc_fea_lq = vq_model.encode(init_image)
-					init_latent = model.get_first_stage_encoding(init_latent_generator)
+					# ？5.prepare latent variables -> prepare_latents
+					# 同样也是随机生成
+					# np.save('init_image.npy', to_numpy(init_image))
+					# init_image = to_tensor(np.load('init_image.npy')).cuda()
+					init_latent_generator, enc_fea_lq = vq_model.encode(init_image) # (2, 3, 512, 512) -> (<ldm.modules.distributions.distributions.DiagonalGaussianDistribution,  [(2,256,256,256), (2, 512, 128, 128)])
+					# import pdb;pdb.set_trace()
+
+					# AutocoderKL
+					init_latent = model.get_first_stage_encoding(init_latent_generator) # DiagonalGaussianDistribution.sample -> [2, 4, 64, 64]
 					text_init = ['']*init_image.size(0)
-					semantic_c = model.cond_stage_model(text_init)
+					# tokenizer
+					semantic_c = model.cond_stage_model(text_init) # -> [2, 77, 1024]
 
 					noise = torch.randn_like(init_latent)
 					# If you would like to start from the intermediate steps, you can add noise to LR to the specific steps.
+					# 如果你想从中间步骤开始，你可以向LR添加噪声到特定的步骤。
 					t = repeat(torch.tensor([999]), '1 -> b', b=init_image.size(0))
-					t = t.to(device).long()
-					x_T = model.q_sample_respace(x_start=init_latent, t=t, sqrt_alphas_cumprod=sqrt_alphas_cumprod, sqrt_one_minus_alphas_cumprod=sqrt_one_minus_alphas_cumprod, noise=noise)
+					t = t.to(device).long() 
+					# import pdb;pdb.set_trace()
+					x_T = model.q_sample_respace(
+						x_start=init_latent,
+						t=t,
+						sqrt_alphas_cumprod=sqrt_alphas_cumprod,
+						sqrt_one_minus_alphas_cumprod=sqrt_one_minus_alphas_cumprod,
+						noise=noise)
+					# torch.Size([2, 4, 64, 64])
 					x_T = None
+					
+					# 7. Denoising Loop
+					# self.p_sample_loop -> [2, 4, 64, 64]
+					# self.p_sample_loop -> self.p_sample -> self.p_mean_variance
+					# model_out = self.apply_model # <ldm.models.diffusion.ddpm.DiffusionWrapper>
+					# self.q_posterior
 
-					samples, _ = model.sample(cond=semantic_c, struct_cond=init_latent, batch_size=init_image.size(0), timesteps=opt.ddpm_steps, time_replace=opt.ddpm_steps, x_T=x_T, return_intermediates=True)
+					# import pdb;pdb.set_trace()
+					# ddpm p_sample_loop
+					samples, _ = model.sample(
+						cond=semantic_c, # tokenizer
+						struct_cond=init_latent,
+						batch_size=init_image.size(0),
+						timesteps=opt.ddpm_steps,
+						time_replace=opt.ddpm_steps,
+						x_T=x_T,
+						return_intermediates=True)
+					
+					
+					# 8. Post-processing
+					# 将隐变量 映射到图片					
+					# np.save('samples.npy', to_numpy(samples))
+					# np.save('enc_fea_lq_0.npy', to_numpy(enc_fea_lq[0]))
+					# np.save('enc_fea_lq_1.npy', to_numpy(enc_fea_lq[1]))
+					# samples = to_tensor(np.load('samples.npy')).cuda()
+					# enc_fea_lq_0 = to_tensor(np.load('enc_fea_lq_0.npy')).cuda()
+					# enc_fea_lq_1 = to_tensor(np.load('enc_fea_lq_1.npy')).cuda()
+					# enc_fea_lq = (enc_fea_lq_0, enc_fea_lq_1)
 					x_samples = vq_model.decode(samples * 1. / model.scale_factor, enc_fea_lq)
+					# import pdb;pdb.set_trace()
+					# [2, 4, 64, 64] * 1 / 0.18215, [(2,256,256,256), (2, 512, 128, 128)]) -> (2, 3, 512, 512)
+					
 					if opt.colorfix_type == 'adain':
 						x_samples = adaptive_instance_normalization(x_samples, init_image)
 					elif opt.colorfix_type == 'wavelet':
